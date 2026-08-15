@@ -1,0 +1,97 @@
+<meta charset="utf-8">
+<title>公開して仲間に使ってもらう手順</title>
+<style>
+  body{font-family:-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;line-height:1.9;
+       max-width:820px;margin:24px auto;padding:0 18px;color:#222}
+  h1{font-size:1.6rem;border-bottom:3px solid #1f6feb;padding-bottom:8px}
+  h2{margin-top:1.8em;background:#1f6feb;color:#fff;padding:8px 12px;border-radius:6px;font-size:1.15rem}
+  .warn{background:#fff4f4;border:2px solid #e5484d;border-radius:8px;padding:14px 16px;margin:18px 0}
+  .ok{background:#f1fdf4;border:1px solid #2da44e;border-radius:8px;padding:12px 16px;margin:14px 0}
+  code,pre{background:#f2f3f5;border-radius:5px;padding:2px 6px;font-size:.95em}
+  pre{padding:12px;overflow:auto;white-space:pre-wrap}
+  ol{padding-left:1.3em}
+  li{margin:.5em 0}
+  .step{background:#eef4ff;border-left:5px solid #1f6feb;padding:8px 14px;margin:6px 0;font-weight:700}
+</style>
+
+<h1>🏠 このアプリを公開して、スタッフや仲間だけに使ってもらう手順</h1>
+
+<p>ネット上に公開しつつ、<b>「合言葉」を知っている人だけ</b>が使えるようにします。
+合言葉は<b>人ごと</b>に配れ、辞めた人の分だけ後で無効化できます。</p>
+
+<div class="warn">
+  <b>⚠️ 依頼者情報の守秘についての大事な注意</b><br>
+  公開すると、アプリは外部サーバ（Streamlit の無料クラウド）で動きます。<br>
+  そのため<b>公開版では「案件の保存・読込」を既定で無効</b>にしています
+  （依頼者情報を外部に置かないため）。時価の試算だけに使ってください。<br>
+  案件として保存したいときは、<b>事務所PCのローカル版（起動.command）</b>をお使いください。
+</div>
+
+<h2>STEP 1　GitHub の無料アカウントを作る</h2>
+<ol>
+  <li><a href="https://github.com/signup">https://github.com/signup</a> を開き、メールアドレスで無料登録します。</li>
+  <li>あわせて「GitHub Desktop」（無料アプリ）を入れると、ファイルのアップロードがクリック操作でできて簡単です：
+      <a href="https://desktop.github.com/">https://desktop.github.com/</a></li>
+</ol>
+
+<h2>STEP 2　このアプリ一式を GitHub に置く</h2>
+<ol>
+  <li>GitHub Desktop を開き、「File → Add Local Repository」でこのフォルダ
+      （<code>不動産時価評価システム</code>）を選びます。
+      「create a repository」を促されたら、そのまま作成してください。</li>
+  <li><b>Publish repository</b> を押してアップロード。公開範囲は
+      <b>Private（非公開）</b>を選ぶと安心です。</li>
+</ol>
+<div class="ok">
+  <b>秘密情報は自動で除外されます。</b>
+  <code>.gitignore</code> により、APIキー（apikey.txt）・案件データ（data/）・
+  合言葉（secrets.toml）はアップロードされません。安心してそのまま進めてください。
+</div>
+
+<h2>STEP 3　Streamlit の無料クラウドでアプリを起動する</h2>
+<ol>
+  <li><a href="https://share.streamlit.io/">https://share.streamlit.io/</a> を開き、
+      「Continue with GitHub」で先ほどのアカウントで入ります。</li>
+  <li><b>Create app → Deploy a public app from GitHub</b> を選びます。</li>
+  <li>Repository＝先ほどのリポジトリ、Branch＝<code>main</code>、
+      Main file path＝<code>app.py</code> を指定して <b>Deploy</b>。</li>
+  <li>数分でビルドされ、<code>https://〇〇〇.streamlit.app</code> のURLが発行されます。</li>
+</ol>
+
+<h2>STEP 4　合言葉とAPIキーを設定する（ここが本体）</h2>
+<ol>
+  <li>アプリ画面の右下メニュー <b>Manage app → ⋮ → Settings → Secrets</b> を開きます。</li>
+  <li>同じフォルダにある <code>secrets.toml.example</code> をテキストで開き、
+      <b>中身をまるごとコピー</b>して Secrets 欄に貼り付けます。</li>
+  <li>次の3か所を実際の値に書き換えて <b>Save</b>：
+    <ul>
+      <li><code>REINFOLIB_API_KEY</code> … 国交省APIキー（全員で共有。各自取得は不要）</li>
+      <li><code>[access]</code> の各行 … <b>「表示名 = 合言葉」</b>を人数分。合言葉は長めに。</li>
+      <li>案件保存を公開版でも使いたい場合のみ <code>allow_case_save = true</code>
+          （※守秘の観点から通常は false のまま推奨）</li>
+    </ul>
+  </li>
+</ol>
+<pre>[access]
+"岩井（管理者）" = "sakura-densha-aozora-1987"
+"スタッフ田中"   = "midori-kujira-tokei-4423"
+"友人の佐藤"     = "hoshizora-ringo-kaze-7781"</pre>
+
+<h2>STEP 5　みんなに配る／やめてもらう</h2>
+<ul>
+  <li><b>配る</b>：発行されたURLと、その人の合言葉を伝えるだけ。開くとログイン画面が出ます。</li>
+  <li><b>無効化する</b>：Secrets からその人の行を消して Save。次からは入れなくなります。</li>
+  <li><b>合言葉を変える</b>：その行の右側を書き換えて Save。本人にだけ新しい合言葉を伝えます。</li>
+</ul>
+
+<div class="ok">
+  <b>事務所PCのローカル版は、これまで通り合言葉なしで使えます。</b>
+  <code>起動.command</code> で開いた場合は信頼環境として扱い、案件保存も使えます。
+</div>
+
+<h2>困ったとき</h2>
+<ul>
+  <li>ログイン画面で「アクセス設定が未設定です」と出る → STEP 4 の Secrets 設定がまだです。</li>
+  <li>データが出ない → Secrets の <code>REINFOLIB_API_KEY</code> が正しいか確認。</li>
+  <li>設定を変えたのに反映されない → Manage app から <b>Reboot</b> すると確実です。</li>
+</ul>

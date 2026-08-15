@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>APIキー取得手順 — 不動産時価評価システム</title>
+<style>
+  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif;
+         line-height: 1.9; margin: 0; padding: 2rem; background: #f5f6f8; color: #222; }
+  .wrap { max-width: 760px; margin: 0 auto; background: #fff; padding: 2rem 2.4rem;
+          border-radius: 14px; box-shadow: 0 2px 16px rgba(0,0,0,.08); }
+  h1 { font-size: 1.5rem; border-bottom: 3px solid #2b6cb0; padding-bottom: .5rem; }
+  h2 { font-size: 1.15rem; color: #2b6cb0; margin-top: 2rem; }
+  ol { padding-left: 1.4rem; }
+  li { margin-bottom: .8rem; }
+  .btn { display: inline-block; background: #2b6cb0; color: #fff !important; text-decoration: none;
+         padding: .8rem 1.4rem; border-radius: 8px; font-weight: bold; margin: .4rem 0; }
+  .btn:hover { background: #245a94; }
+  .note { background: #fff8e1; border-left: 4px solid #f0a500; padding: .8rem 1rem; border-radius: 6px; }
+  .key { background: #eef2f7; padding: .15rem .4rem; border-radius: 4px; font-family: monospace; }
+  code { background: #eef2f7; padding: .1rem .35rem; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>APIキーの取り方（不動産情報ライブラリ）</h1>
+  <p>このシステムで<strong>本物のデータ</strong>を使うには、国土交通省の「不動産情報ライブラリ」から
+     無料のAPIキー（合言葉のような文字列）を1回だけ取得します。取得まで数日かかる場合があります。
+     それまでは<strong>デモモード</strong>でお試しいただけます。</p>
+
+  <h2>ステップ1：申請ページを開く</h2>
+  <p>下のボタンを押すと、申請ページがブラウザで開きます。</p>
+  <a class="btn" href="https://www.reinfolib.mlit.go.jp/help/apiManual/" target="_blank">
+     ▶ 不動産情報ライブラリ APIマニュアル・申請ページを開く</a>
+  <p>ページ内の「<strong>API利用申請</strong>」または「利用申請フォーム」へ進みます。</p>
+  <a class="btn" href="https://www.reinfolib.mlit.go.jp/api/request/" target="_blank">
+     ▶ 直接 申請フォームを開く</a>
+
+  <h2>ステップ2：申請フォームに入力</h2>
+  <ol>
+    <li>お名前・メールアドレス・利用目的などを入力します。
+        利用目的は「<strong>不動産の簡易な時価評価のため</strong>」などで問題ありません。</li>
+    <li>利用規約に同意して送信します。</li>
+  </ol>
+  <div class="note">審査後、登録したメールアドレス宛に<strong>APIキー</strong>が届きます
+    （すぐに届かず、数日かかることがあります）。</div>
+
+  <h2>ステップ3：届いたキーをシステムに登録</h2>
+  <ol>
+    <li>メールに書かれた <span class="key">Ocp-Apim-Subscription-Key</span>（英数字の長い文字列）をコピーします。</li>
+    <li>「起動.command」でシステムを開き、画面左の<strong>「デモモード」をOFF</strong>にします。</li>
+    <li>左側の「APIキー」欄にキームを貼り付けて、<strong>「保存」</strong>ボタンを押します。</li>
+    <li>これで本物のデータが使えるようになります。キーの登録は最初の1回だけです。</li>
+  </ol>
+
+  <h2>困ったとき</h2>
+  <ul>
+    <li>キーを間違えると「認証エラー」と表示されます。もう一度コピーし直してください。</li>
+    <li>キーを取り直したいときは、APIキー欄の「消去」を押してから登録し直します。</li>
+  </ul>
+</div>
+</body>
+</html>

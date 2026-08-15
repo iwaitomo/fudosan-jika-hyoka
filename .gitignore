@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+apikey.txt
+data/
+.DS_Store
+# 合言葉・APIキーなどの秘密情報（絶対にGitに載せない）
+.streamlit/secrets.toml
+secrets.toml

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>はじめにお読みください — 不動産 簡易時価評価システム</title>
+<style>
+  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif;
+         line-height: 1.9; margin: 0; padding: 2rem; background: #f5f6f8; color: #222; }
+  .wrap { max-width: 780px; margin: 0 auto; background: #fff; padding: 2rem 2.4rem;
+          border-radius: 14px; box-shadow: 0 2px 16px rgba(0,0,0,.08); }
+  h1 { font-size: 1.55rem; border-bottom: 3px solid #2b6cb0; padding-bottom: .5rem; }
+  h2 { font-size: 1.2rem; color: #2b6cb0; margin-top: 2rem; }
+  ol, ul { padding-left: 1.4rem; }
+  li { margin-bottom: .6rem; }
+  .file { background: #eef2f7; padding: .12rem .5rem; border-radius: 5px; font-weight: bold; }
+  .note { background: #fff8e1; border-left: 4px solid #f0a500; padding: .8rem 1rem; border-radius: 6px; }
+  .warn { background: #fdecea; border-left: 4px solid #d64541; padding: .8rem 1rem; border-radius: 6px; }
+  .step { background: #eef7ff; border-left: 4px solid #2b6cb0; padding: .8rem 1rem; border-radius: 6px; margin:.6rem 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>不動産（土地）簡易時価評価システム</h1>
+  <p>対象の土地の周辺にある <strong>地価公示・地価調査</strong> と <strong>過去の取引価格</strong>（国土交通省の公開データ）を
+     自動で集め、<strong>参考となる時価</strong>を試算するツールです。</p>
+
+  <h2>使い方（かんたん3手順）</h2>
+  <ol>
+    <li><span class="file">起動.command</span> をダブルクリックします。黒い画面が開き、少し待つとブラウザに操作画面が出ます。</li>
+    <li>画面の <strong>STEP 1 → STEP 8</strong> の順に、上から入力・クリックしていきます。</li>
+    <li>使い終わったら、ブラウザのタブを閉じ、黒い画面で何かキーを押して閉じます。</li>
+  </ol>
+  <div class="note">初回だけ、必要な部品の準備で数分かかります。2回目からはすぐ開きます。</div>
+
+  <h2>画面の流れ</h2>
+  <div class="step"><b>STEP 1</b>　都道府県・市区町村・町名・地番・地積を入力します。</div>
+  <div class="step"><b>STEP 2</b>　「住所から地図を表示」を押し、地図上で対象地を<strong>クリック</strong>します（赤いピンが立ちます）。</div>
+  <div class="step"><b>STEP 3</b>　「周辺データを取得する」を押すと、公示価格と取引事例を集めます。</div>
+  <div class="step"><b>STEP 4・5</b>　集まった公示地点・取引事例が表で出ます。使わない取引は<strong>チェックを外す</strong>だけで除外できます。</div>
+  <div class="step"><b>STEP 6</b>　角地・不整形など、機械では拾えない増減を<strong>％で手入力</strong>できます（任意）。</div>
+  <div class="step"><b>STEP 7</b>　参考単価・参考価格・価格レンジ・比較表が出ます。</div>
+  <div class="step"><b>STEP 8</b>　案件名を付けて保存すると、次回サイドバーから呼び出せます。</div>
+
+  <h2>最初はデモモードでお試しを</h2>
+  <p>APIキーが無くても、左の<strong>「デモモード」</strong>がONなら、サンプルデータで一通り操作を体験できます。
+     本物のデータを使うときは、<span class="file">APIキー取得手順.command</span> を開いてキーを取得し、デモモードをOFFにしてキーを登録してください。</p>
+
+  <div class="warn">
+    <b>ご注意</b>　このシステムが出す金額は、公開データにもとづく<strong>機械的な参考値</strong>です。
+    正式な不動産鑑定評価ではありません。個別の権利関係・建物・市場動向は反映されません。
+    重要な判断には、必ず専門家の評価をご確認ください。
+  </div>
+</div>
+</body>
+</html>

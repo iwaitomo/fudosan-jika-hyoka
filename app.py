@@ -9,6 +9,7 @@
 """
 import re
 import math
+import datetime
 import pandas as pd
 import streamlit as st
 
@@ -33,7 +34,7 @@ st.set_page_config(page_title="不動産 簡易時価評価システム", page_i
 # アクセス制限（公開時は合言葉ログイン必須。事務所PCのローカル起動は素通り）
 current_user = auth.require_login()
 
-THIS_YEAR = 2026  # 取引の「◯年より前」を判定する基準年
+THIS_YEAR = datetime.date.today().year  # 取引の「◯年より前」を判定する基準年（当年）
 
 # 表の列（この順が既定。ユーザーは並び替え・表示/非表示を選べる）
 COLS4_ALL = ["種別", "所在", "㎡単価(円)", "距離(m)", "用途地域",
@@ -340,7 +341,11 @@ with cc[1]:
 # ---- STEP3 周辺データを取得 ----------------------------------------------
 st.header("STEP 3　周辺の公示価格・取引事例を取得")
 opt = st.columns(3)
-land_year = opt[0].selectbox("地価公示・調査の年", [2024, 2023, 2022], index=0)
+# 最新年から過去8年ぶんを選べるようにする（最新年はデータ未公表のことがあり得る）
+_year_options = list(range(THIS_YEAR, THIS_YEAR - 8, -1))
+land_year = opt[0].selectbox("地価公示・調査の年", _year_options, index=0,
+                             help="最新年を選んで結果が0件のときは、1つ前の年を選んでください"
+                                  "（公示は3月頃、調査は9月頃に公表）。")
 years_back = opt[1].slider("取引事例をさかのぼる年数", 1, 5, 3)
 n_koji = opt[2].slider("公示価格方式で使う近傍地点数", 1, 5, 3)
 
@@ -598,9 +603,19 @@ if st.session_state.get("trades") is not None:
             a_range = None
             if area_vals and min(area_vals) < max(area_vals):
                 amin, amax = int(math.floor(min(area_vals))), int(math.ceil(max(area_vals)))
+                # 既定は「対象地積の1/2〜2倍」（データ範囲内にクランプ）
+                def_lo = max(amin, int(math.floor(in_area * 0.5))) if in_area else amin
+                def_hi = min(amax, int(math.ceil(in_area * 2.0))) if in_area else amax
+                if def_lo > def_hi:               # 対象地積が事例範囲から外れる場合の保険
+                    def_lo, def_hi = amin, amax
+                # 対象地積（in_area）が変わったら既定を入れ直す。手動調整はそれまで保持
+                if st.session_state.get("trade_arange_basis") != in_area:
+                    st.session_state["trade_f_arange"] = (def_lo, def_hi)
+                    st.session_state["trade_arange_basis"] = in_area
                 _sanitize_range("trade_f_arange", amin, amax)
-                st.session_state.setdefault("trade_f_arange", (amin, amax))
-                a_range = scol[0].slider("面積(㎡)の範囲", amin, amax, key="trade_f_arange")
+                st.session_state.setdefault("trade_f_arange", (def_lo, def_hi))
+                a_range = scol[0].slider("面積(㎡)の範囲", amin, amax, key="trade_f_arange",
+                                         help="初期値は対象地積の1/2〜2倍です（地積を変えると入れ直します）。")
             y_range = None
             if year_vals and min(year_vals) < max(year_vals):
                 ymin, ymax = min(year_vals), max(year_vals)
@@ -796,48 +811,59 @@ else:
 st.header("STEP 8　路線価・相続税評価（参考）")
 st.caption("相続税路線価と、近隣の基準地（地価公示・地価調査）の比をつかって、"
            "対象地の『路線価による価額』と『基準地価をもとにした価額』を算出します。"
-           "路線価は国税庁の[路線価図](https://www.rosenka.nta.go.jp/)で調べて入力してください。")
+           "基準地価は最寄り地点から自動取得、路線価は公示・基準地価の約8割で自動推定します"
+           "（正確な数値は国税庁の[路線価図](https://www.rosenka.nta.go.jp/)で調べて上書きできます）。")
 
-rk1, rk2 = st.columns(2)
-# ① 対象地の正面路線価（千円/㎡で入力＝路線価図の表記に合わせる）
-front_roseka_sen = rk1.number_input(
-    "① 対象地の正面路線価（千円/㎡）", min_value=0.0,
-    value=float(st.session_state.get("in_front_roseka", 0.0)), step=1.0,
-    key="in_front_roseka",
-    help="路線価図に書かれた数字（例：135）をそのまま入力。単位は千円/㎡です。")
+# 自動入力のもとになるデータ（最寄りの地価公示・調査地点／時価参考単価）
+_pts = [p for p in (points or []) if p.get("単価_円m2")]
+nearest_pt = min(_pts, key=lambda p: p["距離m"]) if _pts else None
+ref_jika = st.session_state.get("ref_unit")   # 円/㎡（システムの時価参考単価）
+ROSEKA_RATIO = 0.8                            # 路線価 ≒ 時価(公示)×0.8 の目安
 
-# ② 基準地の地価：取得済み地点から選ぶ / 手動入力
-kijun_src_options = ["― 手動で入力 ―"]
-pt_map = {}
-for p in (points or []):
-    if p.get("単価_円m2"):
-        label = f'{p["種別"]}｜{p["所在"]}（{num(p["単価_円m2"])}円/㎡）'
-        kijun_src_options.append(label)
-        pt_map[label] = p
-kijun_pick = rk2.selectbox("② 基準地の地価をどこから取るか", kijun_src_options,
-                           key="kijun_pick",
-                           help="近隣の地価公示・地価調査の地点を『基準地』として選ぶと②が自動で入ります。")
-if kijun_pick != kijun_src_options[0] and kijun_pick in pt_map:
-    kijun_chika_yen = float(pt_map[kijun_pick]["単価_円m2"])
-    kijun_place = pt_map[kijun_pick]["所在"]
-    rk2.caption(f"② 基準地の地価：{num(round(kijun_chika_yen))} 円/㎡（{kijun_place}）")
+def _seed_roseka():
+    """最寄り地点・時価参考単価から ①②③ を自動で入れる（千円/㎡）。"""
+    if nearest_pt:
+        chika = nearest_pt["単価_円m2"]
+        st.session_state["in_kijun_chika"] = round(chika / 1000, 1)            # ②
+        st.session_state["in_kijun_roseka"] = round(chika * ROSEKA_RATIO / 1000, 1)  # ③
+    base_front = ref_jika or (nearest_pt["単価_円m2"] if nearest_pt else None)
+    if base_front:
+        st.session_state["in_front_roseka"] = round(base_front * ROSEKA_RATIO / 1000, 1)  # ①
+
+# 既定値を用意し、データが揃った初回に自動入力
+for _k in ("in_front_roseka", "in_kijun_chika", "in_kijun_roseka"):
+    st.session_state.setdefault(_k, 0.0)
+if nearest_pt and not st.session_state.get("roseka_seeded"):
+    _seed_roseka()
+    st.session_state["roseka_seeded"] = True
+
+cbtn = st.columns([2, 1])
+if cbtn[0].button("🔄 路線価・基準地価を自動入力（推定）", use_container_width=True,
+                  disabled=(nearest_pt is None),
+                  help="最寄りの地価公示・調査地点と時価参考単価から①②③を入れ直します。"):
+    _seed_roseka()
+    st.rerun()
+if nearest_pt:
+    cbtn[1].caption(f"基準地：{nearest_pt['所在']}")
 else:
-    kijun_place = "（手動入力）"
-    kijun_chika_sen = rk2.number_input(
-        "② 基準地の地価（千円/㎡）", min_value=0.0,
-        value=float(st.session_state.get("in_kijun_chika", 0.0)), step=1.0,
-        key="in_kijun_chika")
-    kijun_chika_yen = kijun_chika_sen * 1000.0
+    cbtn[1].caption("STEP3で周辺データを取得すると自動入力できます")
 
-# ③ 基準地の路線価（千円/㎡）
-kijun_roseka_sen = st.number_input(
-    "③ 基準地の路線価（千円/㎡）", min_value=0.0,
-    value=float(st.session_state.get("in_kijun_roseka", 0.0)), step=1.0,
-    key="in_kijun_roseka",
-    help="②で選んだ基準地の場所について、路線価図で調べた路線価を入力します。")
+rk1, rk2, rk3 = st.columns(3)
+# ①②③ とも 千円/㎡ で入力（路線価図の表記に合わせる）。自動入力後は自由に上書き可
+front_roseka_sen = rk1.number_input("① 対象地の正面路線価（千円/㎡）", min_value=0.0,
+                                    step=1.0, key="in_front_roseka",
+                                    help="路線価図の数字（例：135）。自動値は時価×0.8の推定です。")
+kijun_chika_sen = rk2.number_input("② 基準地の地価（千円/㎡）", min_value=0.0,
+                                   step=1.0, key="in_kijun_chika",
+                                   help="最寄りの地価公示・調査地点の単価を自動取得。")
+kijun_roseka_sen = rk3.number_input("③ 基準地の路線価（千円/㎡）", min_value=0.0,
+                                    step=1.0, key="in_kijun_roseka",
+                                    help="基準地の路線価。自動値は②×0.8の推定です。")
+kijun_place = nearest_pt["所在"] if nearest_pt else "（手動入力）"
 
 # 円/㎡ に換算して計算
 front_roseka_yen = front_roseka_sen * 1000.0
+kijun_chika_yen = kijun_chika_sen * 1000.0
 kijun_roseka_yen = kijun_roseka_sen * 1000.0
 roseka = calc.roseka_valuation(front_roseka_yen, kijun_chika_yen, kijun_roseka_yen, in_area)
 

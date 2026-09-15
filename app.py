@@ -850,9 +850,9 @@ else:
 
 rk1, rk2, rk3 = st.columns(3)
 # ①②③ とも 千円/㎡ で入力（路線価図の表記に合わせる）。自動入力後は自由に上書き可
-front_roseka_sen = rk1.number_input("① 対象地の正面路線価（千円/㎡）", min_value=0.0,
+front_roseka_sen = rk1.number_input("① 対象地の推定正面路線価（千円/㎡）", min_value=0.0,
                                     step=1.0, key="in_front_roseka",
-                                    help="路線価図の数字（例：135）。自動値は時価×0.8の推定です。")
+                                    help="路線価図の数字（例：135）。自動値はSTEP7の参考単価×0.8の推定値です。")
 kijun_chika_sen = rk2.number_input("② 基準地の地価（千円/㎡）", min_value=0.0,
                                    step=1.0, key="in_kijun_chika",
                                    help="最寄りの地価公示・調査地点の単価を自動取得。")

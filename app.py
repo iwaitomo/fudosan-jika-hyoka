@@ -193,6 +193,14 @@ for row in (db.list_cases(kw) if _case_ok else []):
         # 土地代データ
         st.session_state["tochidai"] = p.get("tochidai")
         st.session_state["tochidai_station"] = p.get("tochidai_station")
+        # 路線価・相続税評価
+        rk = p.get("roseka") or {}
+        if rk.get("front") is not None:
+            st.session_state["in_front_roseka"] = rk["front"]
+        if rk.get("kijun_chika") is not None:
+            st.session_state["in_kijun_chika"] = rk["kijun_chika"]
+        if rk.get("kijun_roseka") is not None:
+            st.session_state["in_kijun_roseka"] = rk["kijun_roseka"]
         # STEP5 の絞り込み条件
         f = p.get("filters") or {}
         if f.get("area") is not None:
@@ -784,8 +792,88 @@ else:
     st.caption("STEP 3 で周辺データを取得すると、ここに参考価格が表示されます。")
     result = None
 
-# ---- STEP8 保存 -----------------------------------------------------------
-st.header("STEP 8　この案件を保存")
+# ---- STEP8 路線価・相続税評価 ---------------------------------------------
+st.header("STEP 8　路線価・相続税評価（参考）")
+st.caption("相続税路線価と、近隣の基準地（地価公示・地価調査）の比をつかって、"
+           "対象地の『路線価による価額』と『基準地価をもとにした価額』を算出します。"
+           "路線価は国税庁の[路線価図](https://www.rosenka.nta.go.jp/)で調べて入力してください。")
+
+rk1, rk2 = st.columns(2)
+# ① 対象地の正面路線価（千円/㎡で入力＝路線価図の表記に合わせる）
+front_roseka_sen = rk1.number_input(
+    "① 対象地の正面路線価（千円/㎡）", min_value=0.0,
+    value=float(st.session_state.get("in_front_roseka", 0.0)), step=1.0,
+    key="in_front_roseka",
+    help="路線価図に書かれた数字（例：135）をそのまま入力。単位は千円/㎡です。")
+
+# ② 基準地の地価：取得済み地点から選ぶ / 手動入力
+kijun_src_options = ["― 手動で入力 ―"]
+pt_map = {}
+for p in (points or []):
+    if p.get("単価_円m2"):
+        label = f'{p["種別"]}｜{p["所在"]}（{num(p["単価_円m2"])}円/㎡）'
+        kijun_src_options.append(label)
+        pt_map[label] = p
+kijun_pick = rk2.selectbox("② 基準地の地価をどこから取るか", kijun_src_options,
+                           key="kijun_pick",
+                           help="近隣の地価公示・地価調査の地点を『基準地』として選ぶと②が自動で入ります。")
+if kijun_pick != kijun_src_options[0] and kijun_pick in pt_map:
+    kijun_chika_yen = float(pt_map[kijun_pick]["単価_円m2"])
+    kijun_place = pt_map[kijun_pick]["所在"]
+    rk2.caption(f"② 基準地の地価：{num(round(kijun_chika_yen))} 円/㎡（{kijun_place}）")
+else:
+    kijun_place = "（手動入力）"
+    kijun_chika_sen = rk2.number_input(
+        "② 基準地の地価（千円/㎡）", min_value=0.0,
+        value=float(st.session_state.get("in_kijun_chika", 0.0)), step=1.0,
+        key="in_kijun_chika")
+    kijun_chika_yen = kijun_chika_sen * 1000.0
+
+# ③ 基準地の路線価（千円/㎡）
+kijun_roseka_sen = st.number_input(
+    "③ 基準地の路線価（千円/㎡）", min_value=0.0,
+    value=float(st.session_state.get("in_kijun_roseka", 0.0)), step=1.0,
+    key="in_kijun_roseka",
+    help="②で選んだ基準地の場所について、路線価図で調べた路線価を入力します。")
+
+# 円/㎡ に換算して計算
+front_roseka_yen = front_roseka_sen * 1000.0
+kijun_roseka_yen = kijun_roseka_sen * 1000.0
+roseka = calc.roseka_valuation(front_roseka_yen, kijun_chika_yen, kijun_roseka_yen, in_area)
+
+if front_roseka_yen and in_area:
+    rm1, rm2, rm3 = st.columns(3)
+    rm1.metric("路線価による価額（①×面積）", yen_man(roseka.get("路線価評価額_円")))
+    rm2.metric("基準地価をもとにした価額（④×面積）", yen_man(roseka.get("基準地価評価額_円")))
+    if roseka.get("倍率"):
+        rm3.metric("路線価→時価の倍率（②÷③）", f'{roseka["倍率"]:.3f}',
+                   help="基準地の『地価÷路線価』。路線価に対する時価水準の目安。")
+
+    # 添付資料と同じ形の明細表
+    def _sen(yen):
+        return f"{yen/1000:,.0f} 千円/㎡" if yen else "―"
+    tbl = [
+        {"項目": "① 対象地の正面路線価", "値": _sen(front_roseka_yen)},
+        {"項目": "② 基準地の地価", "値": (_sen(kijun_chika_yen) + f"（{kijun_place}）")},
+        {"項目": "③ 基準地の路線価", "値": _sen(kijun_roseka_yen)},
+        {"項目": "④ 基準地価を基にした対象地の㎡単価（②÷③×①）",
+         "値": _sen(roseka.get("基準地価ベース単価_円m2"))},
+        {"項目": "地積", "値": f"{in_area:,.2f} ㎡"},
+        {"項目": "◆ 路線価による価額（①×面積）",
+         "値": (f'{roseka["路線価評価額_円"]/1000:,.0f} 千円' if roseka.get("路線価評価額_円") else "―")},
+        {"項目": "◆ 基準地価をもとにした価額（④×面積）",
+         "値": (f'{roseka["基準地価評価額_円"]/1000:,.0f} 千円' if roseka.get("基準地価評価額_円") else "―")},
+    ]
+    st.table(pd.DataFrame(tbl))
+    st.caption("※ 相続税の申告額そのものではなく、路線価・基準地価に基づく参考額です。"
+               "実際の相続税評価では画地補正・各種調整が必要です。")
+    st.session_state["roseka_result"] = roseka
+else:
+    st.info("① 正面路線価 と 地積（STEP1）を入力すると、ここに路線価評価が表示されます。")
+    st.session_state["roseka_result"] = None
+
+# ---- STEP9 保存 -----------------------------------------------------------
+st.header("STEP 9　この案件を保存")
 if not auth.case_save_enabled():
     st.info("🔒 公開版では、依頼者情報保護のため案件の保存は無効にしています。"
             "案件として保存したい場合は、事務所PCのローカル版（起動.command）をご利用ください。")
@@ -815,6 +903,14 @@ if st.button("💾 保存する", use_container_width=True):
         # 土地代データの裏取り結果
         "tochidai": st.session_state.get("tochidai"),
         "tochidai_station": st.session_state.get("tochidai_station"),
+        # 路線価・相続税評価
+        "roseka": {
+            "front": st.session_state.get("in_front_roseka"),
+            "kijun_chika": st.session_state.get("in_kijun_chika"),
+            "kijun_roseka": st.session_state.get("in_kijun_roseka"),
+            "pick": st.session_state.get("kijun_pick"),
+        },
+        "roseka_result": st.session_state.get("roseka_result"),
     }
     cid = db.save_case(case_name, f"{in_pref}{in_city_name}{in_town}", in_chiban, in_area, memo, payload)
     st.success(f"保存しました（案件番号 #{cid}）。左のサイドバーからいつでも呼び出せます。")

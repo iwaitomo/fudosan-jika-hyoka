@@ -167,3 +167,41 @@ def summarize(target_area, koji_unit, trade_stats, corrections,
     out["レンジ中心_円"] = center
     out["レンジ高_円"] = center * (1 + range_pct / 100.0)
     return out
+
+
+# ------------------------------------------------------------ 路線価・相続税評価
+def roseka_valuation(front_roseka, kijun_chika, kijun_roseka, area):
+    """
+    路線価と基準地価の比をつかった相続土地の評価（添付資料の算式）。
+
+    引数（すべて 円/㎡、area は ㎡）:
+      front_roseka … ① 対象地の正面路線価（相続税路線価）
+      kijun_chika  … ② 基準地の地価（地価公示・地価調査の㎡単価）
+      kijun_roseka … ③ 基準地の路線価（その基準地点の相続税路線価）
+      area         … 地積
+
+    計算:
+      倍率 = ② ÷ ③                （路線価→時価 の割戻し倍率）
+      ④   = ② ÷ ③ × ① = 倍率 × ①  （基準地価をもとにした対象地の㎡単価）
+      路線価による価額   = ① × 面積
+      基準地価による価額 = ④ × 面積
+    """
+    out = {
+        "正面路線価_円m2": front_roseka,      # ①
+        "基準地_地価_円m2": kijun_chika,       # ②
+        "基準地_路線価_円m2": kijun_roseka,    # ③
+        "地積_m2": area,
+        "倍率": None,                          # ②÷③
+        "基準地価ベース単価_円m2": None,        # ④
+        "路線価評価額_円": None,               # ①×面積
+        "基準地価評価額_円": None,             # ④×面積
+    }
+    if kijun_chika and kijun_roseka:
+        out["倍率"] = kijun_chika / kijun_roseka
+    if out["倍率"] and front_roseka:
+        out["基準地価ベース単価_円m2"] = out["倍率"] * front_roseka       # ④
+    if front_roseka and area:
+        out["路線価評価額_円"] = front_roseka * area
+    if out["基準地価ベース単価_円m2"] and area:
+        out["基準地価評価額_円"] = out["基準地価ベース単価_円m2"] * area
+    return out

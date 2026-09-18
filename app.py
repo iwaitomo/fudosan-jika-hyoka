@@ -266,7 +266,8 @@ with st.expander("📄 資料PDFから自動入力（AI読み取り）", expande
                 try:
                     st.session_state["pdf_extracted"] = pdf_extract.extract_land_info(
                         up.getvalue(), _anth_key,
-                        model=auth.get_secret("EXTRACT_MODEL", pdf_extract.DEFAULT_MODEL))
+                        model=auth.get_secret("EXTRACT_MODEL", pdf_extract.DEFAULT_MODEL),
+                        workspace_id=str(auth.get_secret("ANTHROPIC_WORKSPACE_ID", "") or ""))
                 except Exception as e:  # noqa: BLE001  APIエラー等を画面に出す
                     st.session_state["pdf_extracted"] = None
                     st.error(f"読み取りに失敗しました：{e}")

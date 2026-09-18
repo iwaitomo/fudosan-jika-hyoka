@@ -41,11 +41,17 @@ EXTRACT_PROMPT = """あなたは日本の不動産登記・固定資産税・相
 """
 
 
-def extract_land_info(pdf_bytes: bytes, api_key: str, model: str = DEFAULT_MODEL) -> dict:
-    """PDFのバイト列を Claude に渡し、土地情報の dict を返す。"""
+def extract_land_info(pdf_bytes: bytes, api_key: str, model: str = DEFAULT_MODEL,
+                      workspace_id: str = "") -> dict:
+    """PDFのバイト列を Claude に渡し、土地情報の dict を返す。
+
+    workspace_id: 組織キー（ワークスペース未指定のキー）を使う場合に必要。
+                  Console のワークスペースIDを渡すと anthropic-workspace-id ヘッダを付ける。
+    """
     import anthropic  # 遅延インポート（未インストール環境でアプリ全体が落ちないように）
 
-    client = anthropic.Anthropic(api_key=api_key)
+    default_headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
+    client = anthropic.Anthropic(api_key=api_key, default_headers=default_headers)
     b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
     resp = client.messages.create(
         model=model,

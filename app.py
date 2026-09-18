@@ -17,6 +17,7 @@ import apikey_store
 import demo_data
 import tochidai
 import auth
+import pdf_extract
 from prefectures import PREFECTURES, NAME_TO_CODE
 from reinfolib import Reinfolib, ReinfolibError, geocode_gsi, geocode_best
 import calc
@@ -223,6 +224,76 @@ st.caption("国土交通省「不動産情報ライブラリ」の公開デー�
 
 # ---- STEP1 対象土地の入力 -------------------------------------------------
 st.header("STEP 1　対象の土地を入力")
+
+
+def _apply_pdf_extract(ex):
+    """AI読み取り結果を STEP1（と①路線価）の入力欄へ反映する。"""
+    pref = ex.get("prefecture")
+    if pref and pref in NAME_TO_CODE:
+        st.session_state["in_pref"] = pref
+    if ex.get("town"):
+        st.session_state["in_town"] = str(ex["town"])
+    if ex.get("chiban"):
+        st.session_state["in_chiban"] = str(ex["chiban"])
+    if ex.get("area_m2") is not None:
+        try:
+            st.session_state["in_area"] = float(ex["area_m2"])
+        except (TypeError, ValueError):
+            pass
+    if ex.get("chimoku"):
+        st.session_state["in_chimoku"] = str(ex["chimoku"])
+    if ex.get("front_roseka_sen") is not None:
+        try:
+            st.session_state["in_front_roseka"] = float(ex["front_roseka_sen"])
+        except (TypeError, ValueError):
+            pass
+    if ex.get("city"):
+        st.session_state["pdf_city_pending"] = str(ex["city"])  # 一覧取得後に自動選択
+
+
+with st.expander("📄 資料PDFから自動入力（AI読み取り）", expanded=False):
+    st.caption("登記事項証明書・固定資産評価証明書・名寄帳・公図などのPDFをAIが読み取り、"
+               "下の入力欄に反映します。スキャン画像のPDFも読めます。"
+               "※ アップしたPDFは読み取りのためAI（Anthropic）に送信されます。依頼者情報を含む場合はご留意ください。")
+    _anth_key = auth.get_secret("ANTHROPIC_API_KEY", "") or ""
+    if not _anth_key:
+        st.info("この機能を使うには、管理者がアプリの Settings → Secrets に "
+                "`ANTHROPIC_API_KEY` を設定してください。")
+    else:
+        up = st.file_uploader("PDFを選ぶ", type=["pdf"], key="pdf_up")
+        if up is not None and st.button("🤖 AIで読み取る", key="pdf_read"):
+            with st.spinner("AIが資料を読み取っています…（数十秒かかることがあります）"):
+                try:
+                    st.session_state["pdf_extracted"] = pdf_extract.extract_land_info(
+                        up.getvalue(), _anth_key,
+                        model=auth.get_secret("EXTRACT_MODEL", pdf_extract.DEFAULT_MODEL))
+                except Exception as e:  # noqa: BLE001  APIエラー等を画面に出す
+                    st.session_state["pdf_extracted"] = None
+                    st.error(f"読み取りに失敗しました：{e}")
+        ex = st.session_state.get("pdf_extracted")
+        if ex:
+            st.success("読み取り結果です。内容を確認して『反映』を押してください。")
+            def _sv(v):
+                return "―" if v is None or v == "" else str(v)
+            st.table(pd.DataFrame([
+                {"項目": "都道府県", "読取値": _sv(ex.get("prefecture"))},
+                {"項目": "市区町村", "読取値": _sv(ex.get("city"))},
+                {"項目": "町名・丁目", "読取値": _sv(ex.get("town"))},
+                {"項目": "地番", "読取値": _sv(ex.get("chiban"))},
+                {"項目": "地積(㎡)", "読取値": _sv(ex.get("area_m2"))},
+                {"項目": "地目", "読取値": _sv(ex.get("chimoku"))},
+                {"項目": "正面路線価(千円/㎡)", "読取値": _sv(ex.get("front_roseka_sen"))},
+                {"項目": "資料の種類", "読取値": _sv(ex.get("doc_type"))},
+            ]))
+            if ex.get("multiple_parcels"):
+                st.warning("複数の筆が記載されています。反映されるのは主たる1筆です。"
+                           + (str(ex.get("notes")) if ex.get("notes") else ""))
+            elif ex.get("notes"):
+                st.caption("メモ：" + str(ex["notes"]))
+            if st.button("⬇ この内容をSTEP1に反映", type="primary", key="pdf_apply"):
+                _apply_pdf_extract(ex)
+                st.rerun()
+
 col = st.columns(3)
 pref_names = [n for _, n in PREFECTURES]
 # 既定は神奈川県。値は session_state（key=in_pref）で管理し、読込時もそこへ復元する
@@ -245,6 +316,15 @@ with col[1]:
         if cities:
             opts = city_options_with_ward(cities)   # [(表示名, code)]
             labels = [d for d, _ in opts]
+            # PDF読み取りの市区町村があれば、一覧の中から自動選択する（1回だけ）
+            _pending = st.session_state.get("pdf_city_pending")
+            if _pending:
+                _match = next((d for d in labels
+                               if d == _pending or d.endswith(_pending) or _pending.endswith(d)),
+                              None)
+                if _match:
+                    st.session_state["in_city_sel"] = _match
+                    st.session_state.pop("pdf_city_pending", None)
             sel = st.selectbox("市区町村", labels, key="in_city_sel",
                                help="政令指定都市は「区」まで選んでください（例：横浜市神奈川区）。"
                                     "区を選ばないと地図や取引データがずれることがあります。")
@@ -253,15 +333,23 @@ with col[1]:
             if sel.endswith("市") and any(d.endswith("区") and d.startswith(sel) for d in labels):
                 st.warning(f"「{sel}」は政令市です。より正確にするには「{sel}◯◯区」を選んでください。")
         else:
+            if st.session_state.get("pdf_city_pending"):
+                st.info(f"PDFから市区町村「{st.session_state['pdf_city_pending']}」を読み取りました。"
+                        "『市区町村一覧を取得』を押すと自動で選択されます。")
             in_city_name = st.text_input("市区町村（一覧未取得）", st.session_state.get("in_city_name", ""), key="in_city_name")
             city_code = st.text_input("市区町村コード(5桁)", st.session_state.get("in_city_code", ""), key="in_city_code") or None
 
-in_town = col[2].text_input("町名・丁目", st.session_state.get("in_town", "反町"), key="in_town")
+# 既定値は setdefault で用意（value= と key の併用を避け、PDF反映で上書きできるように）
+st.session_state.setdefault("in_town", "反町")
+st.session_state.setdefault("in_chiban", "")
+st.session_state.setdefault("in_area", 150.0)
+st.session_state.setdefault("in_chimoku", "宅地")
+in_town = col[2].text_input("町名・丁目", key="in_town")
 
 col2 = st.columns(3)
-in_chiban = col2[0].text_input("地番", st.session_state.get("in_chiban", ""), key="in_chiban")
-in_area = col2[1].number_input("地積（㎡）", min_value=0.0, value=float(st.session_state.get("in_area", 150.0)), step=1.0, key="in_area")
-in_chimoku = col2[2].text_input("地目（任意）", st.session_state.get("in_chimoku", "宅地"), key="in_chimoku")
+in_chiban = col2[0].text_input("地番", key="in_chiban")
+in_area = col2[1].number_input("地積（㎡）", min_value=0.0, step=1.0, key="in_area")
+in_chimoku = col2[2].text_input("地目（任意）", key="in_chimoku")
 
 # 地図検索用の住所。地番があれば付けて精度を上げ、失敗時は町名までにフォールバックする
 geo_town = f"{in_pref}{in_city_name}{in_town}"
@@ -820,14 +908,18 @@ nearest_pt = min(_pts, key=lambda p: p["距離m"]) if _pts else None
 ref_jika = st.session_state.get("ref_unit")   # 円/㎡（システムの時価参考単価）
 ROSEKA_RATIO = 0.8                            # 路線価 ≒ 時価(公示)×0.8 の目安
 
-def _seed_roseka():
-    """最寄り地点・時価参考単価から ①②③ を自動で入れる（千円/㎡）。"""
+def _seed_roseka(force=False):
+    """最寄り地点・時価参考単価から ①②③ を自動で入れる（千円/㎡）。
+    force=False（初回の自動入力）は、既に値が入っている欄（PDF反映や手入力）は上書きしない。
+    force=True（ボタン）は全て入れ直す。"""
     if nearest_pt:
         chika = nearest_pt["単価_円m2"]
-        st.session_state["in_kijun_chika"] = round(chika / 1000, 1)            # ②
-        st.session_state["in_kijun_roseka"] = round(chika * ROSEKA_RATIO / 1000, 1)  # ③
+        if force or not st.session_state.get("in_kijun_chika"):
+            st.session_state["in_kijun_chika"] = round(chika / 1000, 1)            # ②
+        if force or not st.session_state.get("in_kijun_roseka"):
+            st.session_state["in_kijun_roseka"] = round(chika * ROSEKA_RATIO / 1000, 1)  # ③
     base_front = ref_jika or (nearest_pt["単価_円m2"] if nearest_pt else None)
-    if base_front:
+    if base_front and (force or not st.session_state.get("in_front_roseka")):
         st.session_state["in_front_roseka"] = round(base_front * ROSEKA_RATIO / 1000, 1)  # ①
 
 # 既定値を用意し、データが揃った初回に自動入力
@@ -841,7 +933,7 @@ cbtn = st.columns([2, 1])
 if cbtn[0].button("🔄 路線価・基準地価を自動入力（推定）", use_container_width=True,
                   disabled=(nearest_pt is None),
                   help="最寄りの地価公示・調査地点と時価参考単価から①②③を入れ直します。"):
-    _seed_roseka()
+    _seed_roseka(force=True)
     st.rerun()
 if nearest_pt:
     cbtn[1].caption(f"基準地：{nearest_pt['所在']}")

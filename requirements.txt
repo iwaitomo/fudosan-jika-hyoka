@@ -3,3 +3,4 @@ streamlit-folium>=0.20
 folium>=0.16
 requests>=2.31
 pandas>=2.0
+anthropic>=0.49

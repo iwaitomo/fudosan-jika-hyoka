@@ -18,6 +18,7 @@ import demo_data
 import tochidai
 import auth
 import pdf_extract
+import report
 from prefectures import PREFECTURES, NAME_TO_CODE
 from reinfolib import Reinfolib, ReinfolibError, geocode_gsi, geocode_best
 import calc
@@ -892,9 +893,13 @@ if points or adopted:
         st.caption("最終行は外部サイト『土地代データ』のエリア平均（原典：国土交通省）。参考値です。")
 
     st.info("※ この価格は公開データにもとづく機械的な試算です。個別の権利関係・建物・市場動向は反映していません。")
+    st.session_state["export_result"] = result
+    st.session_state["export_comp"] = comp_rows
 else:
     st.caption("STEP 3 で周辺データを取得すると、ここに参考価格が表示されます。")
     result = None
+    st.session_state["export_result"] = None
+    st.session_state["export_comp"] = None
 
 # ---- STEP8 路線価・相続税評価 ---------------------------------------------
 st.header("STEP 8　路線価・相続税評価（参考）")
@@ -987,9 +992,93 @@ if front_roseka_yen and in_area:
     st.caption("※ 相続税の申告額そのものではなく、路線価・基準地価に基づく参考額です。"
                "実際の相続税評価では画地補正・各種調整が必要です。")
     st.session_state["roseka_result"] = roseka
+    st.session_state["export_roseka_tbl"] = tbl
 else:
     st.info("① 正面路線価 と 地積（STEP1）を入力すると、ここに路線価評価が表示されます。")
     st.session_state["roseka_result"] = None
+    st.session_state["export_roseka_tbl"] = None
+
+# ---- 評価結果の出力（PDF / Excel / Word） --------------------------------
+st.header("📄 評価結果を出力（PDF / Excel / Word）")
+
+_ex_result = st.session_state.get("export_result")
+_ex_comp = st.session_state.get("export_comp")
+_ex_roseka_tbl = st.session_state.get("export_roseka_tbl")
+
+if not _ex_result and not _ex_roseka_tbl:
+    st.caption("STEP 3 で周辺データを取得（参考価格）するか、STEP 8 で路線価評価を出すと、ここから出力できます。")
+else:
+    # ---- 報告書の中身（ctx）を組み立てる ----
+    _sections = [{
+        "heading": "対象土地",
+        "kind": "kv",
+        "rows": [
+            ("所在", f"{in_pref}{in_city_name}{in_town}".strip() or "―"),
+            ("地番", in_chiban or "―"),
+            ("地積", f"{in_area:,.2f} ㎡" if in_area else "―"),
+            ("地目", in_chimoku or "―"),
+        ],
+    }]
+    if _ex_result:
+        rows = [
+            ("参考単価（㎡）", num(_ex_result.get("参考単価_円m2"), "円")),
+            ("参考価格", yen_man(_ex_result.get("参考価格_円"))),
+            ("補正後の価格", yen_man(_ex_result.get("補正後価格_円"))),
+        ]
+        if _ex_result.get("補正率_pct"):
+            rows.append(("手動補正率", f'{_ex_result["補正率_pct"]:+.0f}%'))
+        _sections.append({"heading": "参考価格（STEP7）", "kind": "kv", "rows": rows})
+        if _ex_result.get("レンジ中心_円"):
+            _sections.append({"heading": "価格レンジ（目安）", "kind": "kv", "rows": [
+                ("低位", yen_man(_ex_result["レンジ低_円"])),
+                ("中位", yen_man(_ex_result["レンジ中心_円"])),
+                ("高位", yen_man(_ex_result["レンジ高_円"])),
+            ]})
+    if _ex_comp:
+        _sections.append({
+            "heading": "評価方法の比較",
+            "kind": "table",
+            "columns": ["評価方法", "㎡単価(円)"],
+            "rows": [[r.get("評価方法"), r.get("㎡単価(円)")] for r in _ex_comp],
+        })
+    if _ex_roseka_tbl:
+        _sections.append({
+            "heading": "路線価・相続税評価（STEP8）",
+            "kind": "table",
+            "columns": ["項目", "値"],
+            "rows": [[r.get("項目"), r.get("値")] for r in _ex_roseka_tbl],
+        })
+
+    _ctx = {
+        "title": "不動産（土地）簡易時価評価 報告書",
+        "date": datetime.date.today().strftime("%Y-%m-%d"),
+        "sections": _sections,
+        "notes": [
+            "※ 国土交通省「不動産情報ライブラリ」等の公開データにもとづく参考値です。正式な鑑定評価ではありません。",
+            "※ 個別の権利関係・建物・画地補正・市場動向は反映していません。相続税評価は路線価・基準地価に基づく参考額です。",
+        ],
+    }
+
+    # ファイル名（所在＋日付）。使えない文字は除去
+    _base = re.sub(r"[\\/:*?\"<>|\s]+", "_",
+                   f"評価_{in_town or in_city_name or '対象地'}_{_ctx['date']}").strip("_") or "評価結果"
+
+    st.caption("下のボタンから、上のSTEP7・STEP8の結果をまとめた報告書をダウンロードできます。")
+    try:
+        d1, d2, d3 = st.columns(3)
+        d1.download_button("📕 PDFで出力", data=report.to_pdf(_ctx),
+                           file_name=f"{_base}.pdf", mime="application/pdf",
+                           use_container_width=True)
+        d2.download_button(
+            "📗 Excelで出力", data=report.to_excel(_ctx), file_name=f"{_base}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True)
+        d3.download_button(
+            "📘 Wordで出力", data=report.to_word(_ctx), file_name=f"{_base}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True)
+    except Exception as e:
+        st.error(f"出力ファイルの作成に失敗しました：{e}")
 
 # ---- STEP9 保存 -----------------------------------------------------------
 st.header("STEP 9　この案件を保存")

@@ -7,3 +7,8 @@ anthropic>=0.49
 openpyxl>=3.1
 python-docx>=1.1
 reportlab>=4.0
+
+# --- セキュリティ更新（間接依存の脆弱性対策。pip-audit 2026-10-23 で0件を確認） ---
+pillow>=13.0.0      # CVE-2026-112xxx 他（画像処理）
+urllib3>=2.8.0      # PYSEC-2026-4175/4176/4177（通信）
+certifi>=2026.10.19 # PYSEC-2026-4320（証明書）

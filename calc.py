@@ -48,6 +48,41 @@ def parse_trade_year(period: str):
     return int(m.group(1)) if m else None
 
 
+# 和暦の元号 → その元年の西暦
+_ERA_BASE = {"令和": 2018, "平成": 1988, "昭和": 1925, "大正": 1911, "明治": 1867}
+
+
+def parse_build_year(raw):
+    """建築年の文字列から西暦(int)を返す。
+    例: '平成10年'→1998, '令和元年'→2019, '1998年'→1998。
+    '戦前' など判定不能・不明は None。"""
+    if not raw:
+        return None
+    s = str(raw).strip()
+    # 和暦（元号＋年）
+    m = re.search(r"(令和|平成|昭和|大正|明治)\s*(元|\d+)\s*年", s)
+    if m:
+        n = 1 if m.group(2) == "元" else int(m.group(2))
+        return _ERA_BASE[m.group(1)] + n
+    # 西暦4桁
+    m = re.search(r"(\d{4})\s*年?", s)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def build_age(build_raw, trade_period):
+    """築年数（取引時点）＝取引年 − 建築年。判定不能は None、負値は0に丸める。"""
+    by = parse_build_year(build_raw)
+    if by is None:
+        return None
+    ty = parse_trade_year(trade_period)
+    if ty is None:
+        return None
+    age = ty - by
+    return age if age >= 0 else 0
+
+
 def filter_transactions(trades, target_area, this_year,
                         area_min_ratio=0.5, area_max_ratio=2.0,
                         years_back=3, land_only=True):

@@ -42,8 +42,8 @@ THIS_YEAR = datetime.date.today().year  # 取引の「◯年より前」を判�
 COLS4_ALL = ["種別", "所在", "㎡単価(円)", "距離(m)", "用途地域",
              "建蔽率", "容積率", "最寄駅", "駅距離", "前年比"]
 # STEP5 は「採用」列を常に先頭固定にするので、選択対象からは外す
-COLS5_ALL = ["除外理由", "種類", "地区", "取引時期", "面積(㎡)", "取引総額(円)",
-             "㎡単価(円)", "坪単価(円)", "用途地域"]
+COLS5_ALL = ["除外理由", "種類", "地区", "取引時期", "建築年", "築年数(年)",
+             "面積(㎡)", "取引総額(円)", "㎡単価(円)", "坪単価(円)", "用途地域"]
 
 
 def _sanitize_range(key, lo, hi):
@@ -216,6 +216,8 @@ for row in (db.list_cases(kw) if _case_ok else []):
             st.session_state["trade_f_arange"] = tuple(f["arange"])
         if f.get("yrange"):
             st.session_state["trade_f_yrange"] = tuple(f["yrange"])
+        if f.get("agerange"):
+            st.session_state["trade_f_agerange"] = tuple(f["agerange"])
         st.session_state["editor_ver"] += 1   # 表を作り直して復元状態を反映
         st.rerun()
 
@@ -654,6 +656,11 @@ if st.session_state.get("trades") is not None:
                         if t.get("用途地域") and t["用途地域"] != "―"})
         area_vals = [t["面積_m2"] for t in trades if t.get("面積_m2")]
         year_vals = [y for y in (calc.parse_trade_year(t.get("取引時期")) for t in trades) if y]
+        # 築年数（取引時点）。マンション等で建築年が取れる事例だけ値が入る
+        for t in trades:
+            t["築年数"] = calc.build_age(t.get("建築年_raw"), t.get("取引時期"))
+            t["建築年_西暦"] = calc.parse_build_year(t.get("建築年_raw"))
+        age_vals = [t["築年数"] for t in trades if t.get("築年数") is not None]
 
         with st.expander("🔍 絞り込み条件", expanded=True):
             # session値を掃除（無効値を除去。空なら空のまま＝下で「全件」として扱う）
@@ -713,6 +720,15 @@ if st.session_state.get("trades") is not None:
                 st.session_state.setdefault("trade_f_yrange", (ymin, ymax))
                 y_range = scol[1].slider("取引時期（年）の範囲", ymin, ymax, step=1,
                                          key="trade_f_yrange")
+            # 築年数（マンション等で建築年が取れる場合のみ表示）
+            age_range = None
+            if age_vals and min(age_vals) < max(age_vals):
+                gmin, gmax = int(min(age_vals)), int(max(age_vals))
+                _sanitize_range("trade_f_agerange", gmin, gmax)
+                st.session_state.setdefault("trade_f_agerange", (gmin, gmax))
+                age_range = st.slider("築年数（年）の範囲　※マンション等のみ対象", gmin, gmax,
+                                      step=1, key="trade_f_agerange",
+                                      help="取引時点の築年数（取引年−建築年）。土地のみの事例は築年数が無いため、この範囲では除外されません。")
 
         def _passes(t):
             if t["地区"] not in area_sel or t["種類"] not in type_sel:
@@ -726,6 +742,10 @@ if st.session_state.get("trades") is not None:
             if y_range:
                 y = calc.parse_trade_year(t.get("取引時期"))
                 if y and not (y_range[0] <= y <= y_range[1]):
+                    return False
+            # 築年数は値がある事例（マンション等）だけに適用。土地のみは対象外
+            if age_range and t.get("築年数") is not None:
+                if not (age_range[0] <= t["築年数"] <= age_range[1]):
                     return False
             return True
 
@@ -762,6 +782,7 @@ if st.session_state.get("trades") is not None:
         dft = pd.DataFrame([{
             "採用": trades[i]["採用"], "除外理由": trades[i]["除外理由"] or "（採用候補）",
             "種類": trades[i]["種類"], "地区": trades[i]["地区"], "取引時期": trades[i]["取引時期"],
+            "建築年": trades[i].get("建築年_西暦"), "築年数(年)": trades[i].get("築年数"),
             "面積(㎡)": trades[i]["面積_m2"], "取引総額(円)": trades[i]["取引総額_円"],
             "㎡単価(円)": round(trades[i]["単価_円m2"]) if trades[i]["単価_円m2"] else None,
             "坪単価(円)": round(trades[i]["坪単価_円"]) if trades[i]["坪単価_円"] else None,
@@ -774,13 +795,15 @@ if st.session_state.get("trades") is not None:
             # 絞り込み・一括操作が変わると表を作り直す（チェック状態を正しく反映）
             sig = (f'{st.session_state["editor_ver"]}|{len(visible_idx)}|'
                    f'{",".join(area_sel)}|{",".join(type_sel)}|{",".join(zone_sel)}|'
-                   f'{a_range}|{y_range}')
+                   f'{a_range}|{y_range}|{age_range}')
             edited = st.data_editor(
                 dft, use_container_width=False, hide_index=True, height=460,
                 column_config={
                     "採用": st.column_config.CheckboxColumn("採用", default=True, width="small"),
                     "除外理由": st.column_config.TextColumn("除外理由", width="large"),
                     "用途地域": st.column_config.TextColumn("用途地域", width="medium"),
+                    "建築年": st.column_config.NumberColumn("建築年", format="%d", width="small"),
+                    "築年数(年)": st.column_config.NumberColumn("築年数(年)", format="%d", width="small"),
                     "面積(㎡)": st.column_config.NumberColumn("面積(㎡)", format="localized"),
                     "取引総額(円)": st.column_config.NumberColumn("取引総額(円)", format="localized"),
                     "㎡単価(円)": st.column_config.NumberColumn("㎡単価(円)", format="localized"),
@@ -1105,6 +1128,7 @@ if st.button("💾 保存する", use_container_width=True):
             "zone": st.session_state.get("trade_f_zone"),
             "arange": list(st.session_state["trade_f_arange"]) if st.session_state.get("trade_f_arange") else None,
             "yrange": list(st.session_state["trade_f_yrange"]) if st.session_state.get("trade_f_yrange") else None,
+            "agerange": list(st.session_state["trade_f_agerange"]) if st.session_state.get("trade_f_agerange") else None,
         },
         "cols4": st.session_state.get("cols4"),
         "cols5": st.session_state.get("cols5"),

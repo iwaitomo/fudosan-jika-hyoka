@@ -174,6 +174,7 @@ class Reinfolib:
             "単価_円m2": unit_m2,
             "坪単価_円": tsubo,
             "用途地域": row.get("CityPlanning") or "―",
+            "建築年_raw": row.get("BuildingYear") or "",   # 例: '平成10年' / '1998年' / '戦前'
             "建蔽率": row.get("CoverageRatio"),
             "容積率": row.get("FloorAreaRatio"),
             "前面道路": row.get("Breadth") or row.get("Classification") or "―",
